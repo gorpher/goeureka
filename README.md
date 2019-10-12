@@ -1,2 +1,43 @@
+[![Build Status](https://secure.travis-ci.org/wx11055/travis.png?branch=master)](http://travis-ci.org/wx11055/goeureka)
+[![Postman Test](https://res.cloudinary.com/postman/image/upload/w_152,h_56,c_fit,f_auto,t_team_logo/v1/team/768118b36f06c94b0306958b980558e6915839447e859fe16906e29d683976f0)](https://documenter.getpostman.com/view/3593333/SVtVVonB?version=latest)
 # goeureka
 Goland Eureka Client for Spring Cloud Eureka 1.x
+
+
+
+# Usage
+
+```go
+package main
+
+import (
+	"github.com/wx11055/goeureka/eureka"
+	"log"
+	"net/http"
+	_ "net/http/pprof"
+)
+
+func main() {
+	eureka.New(eureka.AppInfo{"goeureka", "127.0.0.1", 8080, "", ""}) // Performs eurekaClient registration
+	go eureka.Client.Register()
+	startWebServer()
+
+}
+
+func startWebServer() {
+	http.HandleFunc("/", func(writer http.ResponseWriter, request *http.Request) {
+		writer.Write([]byte("hello world"))
+	})
+	log.Println("Starting HTTP service at 8080")
+	err := http.ListenAndServe(":8080", nil)
+	if err != nil {
+		log.Println("An error occured starting HTTP listener at port 8080")
+		log.Println("Error: " + err.Error())
+	}
+}
+```
+
+# 参考链接
+- [Eureka REST operations](https://github.com/Netflix/eureka/wiki/Eureka-REST-operations)
+- [gopkg.in](https://github.com/h2non/gock)
+- [A Tiny Test Framework for Go](https://github.com/nbio/st)

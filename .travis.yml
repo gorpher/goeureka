@@ -1,0 +1,12 @@
+language: go
+
+go:
+  - master
+
+env:
+  - GO111MODULE=on
+
+script: go mod tidy && go test -v ./
+
+notifications:
+  email: false
