@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/wx11055/goeureka/eureka"
+	"github.com/wx11055/goeureka"
 	"log"
 	"net/http"
 	_ "net/http/pprof"
@@ -10,8 +10,8 @@ import (
 
 func main() {
 	port := 9090
-	eureka.New(eureka.AppInfo{AppID: "goeureka", Host: "127.0.0.1", Port: port}) // Performs eurekaClient registration
-	go eureka.Client.Register()
+	goeureka.New(goeureka.AppInfo{AppID: "goeureka", Host: "127.0.0.1", Port: port}) // Performs eurekaClient registration
+	go goeureka.Client.Register()
 	startWebServer(port) // Starts HTTP service  (async)
 
 }

@@ -1,4 +1,4 @@
-package eureka_test
+package goeureka_test
 
 import (
 	"bufio"
@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	. "github.com/smartystreets/goconvey/convey"
-	"github.com/wx11055/goeureka/eureka"
+	"github.com/wx11055/goeureka"
 	"github.com/wx11055/goeureka/model"
 	"github.com/wx11055/gone/logger"
 	"gopkg.in/h2non/gock.v1"
@@ -336,7 +336,7 @@ func TestParseXml2Json(t *testing.T) {
 }
 
 func initClient() {
-	eureka.New(eureka.AppInfo{"SPRING-CLOUD-EUREKA-CLIENT", "192.168.199.239", 8791, "MAX.lan:spring-cloud-eureka-client:8791", ""})
+	goeureka.New(goeureka.AppInfo{"SPRING-CLOUD-EUREKA-CLIENT", "192.168.199.239", 8791, "MAX.lan:spring-cloud-eureka-client:8791", ""})
 }
 
 var DefaultTransport http.RoundTripper = &MockTransport{}
@@ -403,9 +403,9 @@ func TestEurekaClient_GetApps(t *testing.T) {
 	defer gock.Off()
 	initClient()
 
-	gock.New(eureka.Client.AppInfo.EurekaURL).
+	gock.New(goeureka.Client.AppInfo.EurekaURL).
 		Get("/eureka/apps").
 		Reply(200).XML(xmldata)
-	apps := eureka.Client.GetApps()
+	apps := goeureka.Client.GetApps()
 	checkAppData(t, apps)
 }
