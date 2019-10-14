@@ -1,5 +1,7 @@
 [![Build Status](https://secure.travis-ci.org/wx11055/travis.png?branch=master)](http://travis-ci.org/wx11055/goeureka)
+[![GoDoc Status](https://godoc.org/github.com/wx11055/goeureka?status.svg)](https://godoc.org/github.com/wx11055/goeureka)
 [![Postman Test](https://res.cloudinary.com/postman/image/upload/w_152,h_56,c_fit,f_auto,t_team_logo/v1/team/768118b36f06c94b0306958b980558e6915839447e859fe16906e29d683976f0)](https://documenter.getpostman.com/view/3593333/SVtVVonB?version=latest)
+
 # goeureka
 Goland Eureka Client for Spring Cloud Eureka 1.x
 
