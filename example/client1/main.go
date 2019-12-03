@@ -1,18 +1,3 @@
-[![Build Status](https://secure.travis-ci.org/gorpher/travis.png?branch=master)](http://travis-ci.org/gorpher/goeureka)
-[![GoDoc Status](https://godoc.org/github.com/gorpher/goeureka?status.svg)](https://godoc.org/github.com/gorpher/goeureka)
-[![Go Report Card](https://goreportcard.com/badge/github.com/gorpher/goeureka)](https://goreportcard.com/report/github.com/gorpher/goeureka)
-[![codecov](https://codecov.io/gh/gorpher/goeureka/branch/master/graph/badge.svg)](https://codecov.io/gh/gorpher/goeureka)
-[![Sourcegraph](https://sourcegraph.com/github.com/gorpher/goeureka/-/badge.svg)](https://sourcegraph.com/github.com/gorpher/goeureka?badge)
-[![Open Source Helpers](https://www.codetriage.com/gorpher/goeureka/badges/users.svg)](https://www.codetriage.com/gorpher/goeureka)
-
-# goeureka
-Goland Eureka Client for Spring Cloud Eureka 1.x
-
-
-
-### Usage
-
-```go
 package main
 
 import (
@@ -142,13 +127,3 @@ func startWebServer(port int) {
 		log.Println("Error: " + err.Error())
 	}
 }
-```
-### todo
-
-- add log level
-- add error handler
-
-### reference
-- [Eureka REST operations](https://github.com/Netflix/eureka/wiki/Eureka-REST-operations)
-- [gopkg.in](https://github.com/h2non/gock)
-- [A Tiny Test Framework for Go](https://github.com/nbio/st)

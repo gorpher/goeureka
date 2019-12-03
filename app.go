@@ -1,4 +1,4 @@
-package model
+package goeureka
 
 type ActionType string
 
@@ -12,10 +12,10 @@ type InstanceStatus string
 
 const (
 	UP             InstanceStatus = "UP"
-	DOWN                          = "DOWN"
-	STARTING                      = "STARTING"
-	OUT_OF_SERVICE                = "OUT_OF_SERVICE"
-	UNKNOWN                       = "UNKNOWN"
+	DOWN           InstanceStatus = "DOWN"
+	STARTING       InstanceStatus = "STARTING"
+	OUT_OF_SERVICE InstanceStatus = "OUT_OF_SERVICE"
+	UNKNOWN        InstanceStatus = "UNKNOWN"
 )
 
 type DataCenterInfoName string
@@ -72,11 +72,21 @@ type Instance struct {
 
 type Application struct {
 	Name     string     `json:"name" xml:"name"`
-	Instance []Instance `json:"instance" xml:"instance"`
+	Instance []Instance `json:"instance,omitempty" xml:"instance,omitempty"`
 }
 
 type Applications struct {
 	AppsHashCode string        `json:"apps__hashcode" xml:"apps__hashcode"`
 	VersionDelta string        `json:"versions__delta" xml:"versions__delta"`
-	Application  []Application `json:"application" xml:"application"`
+	Application  []Application `json:"application,omitempty" xml:"application,omitempty"`
+}
+
+type AppInfo struct {
+	HostName   string // 服务机器的IP地址
+	AppID      string // 服务名
+	InstanceID string // 服务的实例名
+	Port       int    // 服务的端口
+	UserName   string // 注册中心认证的用户名
+	Password   string // 注册中心认证的密码
+	EurekaURL  string // 注册中心认证的url地址
 }
