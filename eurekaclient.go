@@ -243,7 +243,7 @@ func (c *Client) Register() error {
 	}
 	data, err := json.Marshal(inst)
 	if err != nil {
-		log.Print(" Instance mode to json err:", err)
+		log.Debug().AnErr("解析json参数错误", err)
 		return err
 	}
 	action := httpAction{
@@ -256,16 +256,16 @@ func (c *Client) Register() error {
 	}
 
 	err = doWithRetry("Register Eureka Server", 3, 3*time.Second, func() error {
-		log.Print("Trying to Register to Eureka Server...")
+		log.Debug().Msgf("尝试注册到注册中心 EurekaURL=%s", c.AppInfo.EurekaURL)
 		err = action.DoRequest(nil)
 		if err == nil {
-			log.Print("Register success...")
+			log.Debug().Msgf("注册成功 EurekaURL=%s,AppID=%s,InstanceID=%s", c.AppInfo.EurekaURL, c.AppInfo.AppID, c.AppInfo.InstanceID)
 			return nil
 		}
 		return err
 	})
 	if err != nil {
-		log.Print("registry err: ", err)
+		log.Error().AnErr("注册失败", err)
 		return err
 	}
 	// 刷新获取所有服务加入到缓存
@@ -309,7 +309,7 @@ func (c *Client) StartHeartbeat() error {
 	}
 	data, err := json.Marshal(inst)
 	if err != nil {
-		log.Print(" Instance mode to json err:", err)
+		log.Debug().AnErr("解析json参数错误", err)
 		return err
 	}
 	action := httpAction{
@@ -323,20 +323,20 @@ func (c *Client) StartHeartbeat() error {
 
 	// 心跳请求函数
 	var heartbeat = func() error {
-		log.Print("Trying to send Instance heart beat...")
+		log.Debug().Msgf("尝试发送心跳信息 InstanceID=%s", inst.Instance.InstanceID)
 		err := action.DoRequest(nil)
 		if err != nil {
-			log.Print("send Instance heart beat failed!!!")
+			log.Error().AnErr("发送心跳信息失败", err)
 			return err
 		}
-		log.Print("send Instance heart beat success!")
+		log.Debug().Msg("发送心跳信息成功")
 		return nil
 	}
 	for {
 		// 每隔30秒发送一次心跳
 		err := heartbeat()
 		if err != nil {
-			log.Print("send heart beat err: ", err)
+			log.Error().AnErr("发送心跳信息失败", err)
 		}
 		select {
 		case <-time.After(30 * time.Second):
@@ -350,7 +350,7 @@ func (c *Client) StartHeartbeat() error {
 // 下线
 // DELETE {{url}}/eureka/apps/{{appID}}/{{instanceID}}
 func (c *Client) Deregister() error {
-	log.Print("Trying to deregister application...")
+	log.Debug().Msg("尝试从注册中心中注销,下线")
 	// 停止发送心跳
 	c.stopChan <- struct{}{}
 	// Deregister
@@ -363,17 +363,17 @@ func (c *Client) Deregister() error {
 	}
 	err := action.DoRequest(nil)
 	if err != nil {
-		log.Print("Deregistered application, exiting. Check Client...")
+		log.Error().AnErr("从注册中心注销失败", err)
 		return err
 	}
-	log.Print("deregister application success")
+	log.Debug().Msg("下线成功")
 	return nil
 }
 
 // 获取所有实例
 // GET {{url}}/eureka/apps
 func (c *Client) GetApps() (Applications, error) {
-	log.Print("Trying to query for all appID instances...")
+	log.Debug().Msg("尝试查询获取所有实例")
 	action := httpAction{
 		Url:         c.AppInfo.EurekaURL + "/eureka/apps",
 		Method:      "GET",
@@ -384,7 +384,7 @@ func (c *Client) GetApps() (Applications, error) {
 	data := new(Applications)
 	err := action.DoRequest(data)
 	if err != nil {
-		log.Print("get applications err")
+		log.Error().AnErr("获取所有实例失败", err)
 		return Applications{}, err
 	}
 
@@ -394,7 +394,7 @@ func (c *Client) GetApps() (Applications, error) {
 // 获取指定服务的实例
 // GET {{url}}/eureka/apps/{{appID}}
 func (c *Client) GetAppInstances(appID string) (Application, error) {
-	log.Print("Trying to query for a specific appID/instanceID...")
+	log.Debug().Msg("尝试获取指定服务实例")
 	action := httpAction{
 		Url:         c.AppInfo.EurekaURL + "/eureka/apps/" + appID,
 		Method:      "GET",
@@ -405,6 +405,7 @@ func (c *Client) GetAppInstances(appID string) (Application, error) {
 	data := new(Application)
 	err := action.DoRequest(data)
 	if err != nil {
+		log.Error().AnErr("获取指定服务实例失败", err)
 		return Application{}, err
 	}
 	return *data, err
@@ -413,7 +414,7 @@ func (c *Client) GetAppInstances(appID string) (Application, error) {
 // 查询同服务的所有实例
 // GET {{url}}/eureka/apps/{{appID}}
 func (c *Client) GetOwnAppInstances() (Application, error) {
-	log.Print("Trying to query for a specific appID/instanceID...")
+	log.Debug().Msg("尝试查询指定服务的所有实例")
 	action := httpAction{
 		Url:      c.AppInfo.EurekaURL + "/eureka/apps/" + c.Instance.App,
 		Method:   "GET",
@@ -423,6 +424,7 @@ func (c *Client) GetOwnAppInstances() (Application, error) {
 	data := new(Application)
 	err := action.DoRequest(data)
 	if err != nil {
+		log.Error().AnErr("查询指定服务的所有实例失败", err)
 		return Application{}, err
 	}
 	return *data, err
@@ -431,7 +433,7 @@ func (c *Client) GetOwnAppInstances() (Application, error) {
 // 查询自己注册的服务信息
 // GET {{url}}/eureka/apps/{{appID}}/{{appID}}:{{instanceID}}
 func (c *Client) GetOwnAppInstance() (Instance, error) {
-	log.Print("Trying to request Own application Instance detail...")
+	log.Debug().Msg("尝试查询自己注册的服务信息")
 	action := httpAction{
 		Url:      c.AppInfo.EurekaURL + "/eureka/apps/" + c.Instance.App + "/" + c.Instance.InstanceID,
 		Method:   "GET",
@@ -441,6 +443,7 @@ func (c *Client) GetOwnAppInstance() (Instance, error) {
 	data := new(Instance)
 	err := action.DoRequest(data)
 	if err != nil {
+		log.Error().AnErr("查询自己注册的服务信息失败", err)
 		return Instance{}, err
 	}
 	return *data, err
@@ -448,7 +451,7 @@ func (c *Client) GetOwnAppInstance() (Instance, error) {
 
 // 查询指定服务实例
 func (c *Client) GetAppInstanceByID(appID string, instanceID string) (Instance, error) {
-	log.Print("Trying to request Own application Instance detail...")
+	log.Debug().Msg("尝试查询指定服务实例信息")
 	action := httpAction{
 		Url:      c.AppInfo.EurekaURL + "/eureka/apps/" + appID + "/" + instanceID,
 		Method:   http.MethodGet,
@@ -458,6 +461,7 @@ func (c *Client) GetAppInstanceByID(appID string, instanceID string) (Instance, 
 	data := new(Instance)
 	err := action.DoRequest(data)
 	if err != nil {
+		log.Error().AnErr("查询指定服务实例信息失败", err)
 		return Instance{}, err
 	}
 	return *data, err
@@ -466,7 +470,7 @@ func (c *Client) GetAppInstanceByID(appID string, instanceID string) (Instance, 
 //更改自己实例状态
 // PUT {{url}}/eureka/apps/{{appID}}/{{instanceID}}/status?value=OUT_OF_SERVICE
 func (c *Client) UpdateOwnAppInstanceStatus(status InstanceStatus) error {
-	log.Print("Trying to change Instance status ...")
+	log.Debug().Msg("尝试更改自己实例状态")
 	action := httpAction{
 		Url:         c.AppInfo.EurekaURL + "/eureka/apps/" + c.Instance.App + "/" + c.Instance.InstanceID + "/status?value=" + string(status),
 		Method:      http.MethodPut,
@@ -478,14 +482,14 @@ func (c *Client) UpdateOwnAppInstanceStatus(status InstanceStatus) error {
 	var doHeartBeat bool
 	switch status {
 	case DOWN:
-		log.Print("更改状态下线:", DOWN)
+		log.Debug().Msgf("更改状态下线 status=%s", DOWN)
 		if c.heartbeats {
 			c.stopChan <- struct{}{}
 		}
 		for c.heartbeats {
 		}
 	case OUT_OF_SERVICE:
-		log.Print("更改状态下线:", OUT_OF_SERVICE)
+		log.Debug().Msgf("更改状态下线 status=%s", OUT_OF_SERVICE)
 		if c.heartbeats {
 			c.stopChan <- struct{}{}
 		}
@@ -500,7 +504,7 @@ func (c *Client) UpdateOwnAppInstanceStatus(status InstanceStatus) error {
 	}
 	err := action.DoRequest(nil)
 	if err == nil && doHeartBeat {
-		log.Print("重新开始发送心跳...")
+		log.Debug().Msg("重新开始发送心跳")
 		c.StartHeartbeat()
 	}
 	return err
@@ -509,7 +513,7 @@ func (c *Client) UpdateOwnAppInstanceStatus(status InstanceStatus) error {
 //更新元数据
 //{{url}}/eureka/v2/apps/{{appID}}/{{instanceID}}/metadata?key=value
 func (c *Client) UpdateOwnAppInstanceMetadata(value map[string]string) error {
-	log.Print("Trying to update metadata ...")
+	log.Debug().Msg("尝试更新元数据")
 	vk := url.Values{}
 	for k := range value {
 		vk.Add(k, value[k])
@@ -522,14 +526,13 @@ func (c *Client) UpdateOwnAppInstanceMetadata(value map[string]string) error {
 		UserName: c.AppInfo.UserName,
 		Password: c.AppInfo.Password,
 	}
-	err := action.DoRequest(nil)
-	return err
+	return action.DoRequest(nil)
 }
 
 // 查询vip下的实例
 //GET {{url}}/eureka/vips/{{vipAddress}}
 func (c *Client) GetAppInstanceVip(vip string) (Applications, error) {
-	log.Print("Trying to query Instance in the a svip ...")
+	log.Debug().Msg("查询vip下的实例")
 	action := httpAction{
 		Url:      c.AppInfo.EurekaURL + "/eureka/vips/" + vip,
 		Method:   http.MethodGet,
@@ -539,6 +542,7 @@ func (c *Client) GetAppInstanceVip(vip string) (Applications, error) {
 	data := new(Applications)
 	err := action.DoRequest(data)
 	if err != nil {
+		log.Error().AnErr("查询vip下的实例失败", err)
 		return Applications{}, err
 	}
 	return *data, err
@@ -547,7 +551,7 @@ func (c *Client) GetAppInstanceVip(vip string) (Applications, error) {
 // 查询svip下的实例
 //GET {{url}}/eureka/svips/{{svipAddress}}
 func (c *Client) GetAppInstanceSVip(svips string) (Applications, error) {
-	log.Print("Trying to query Instance in the a svip ...")
+	log.Debug().Msg("查询svip下的实例")
 	action := httpAction{
 		Url:      c.AppInfo.EurekaURL + "/eureka/svips/" + svips,
 		Method:   http.MethodGet,
@@ -558,6 +562,7 @@ func (c *Client) GetAppInstanceSVip(svips string) (Applications, error) {
 	data := new(Applications)
 	err := action.DoRequest(data)
 	if err != nil {
+		log.Error().AnErr("查询svip下的实例", err)
 		return Applications{}, err
 	}
 	return *data, err
@@ -643,13 +648,13 @@ func (h *httpAction) DoRequest(v interface{}) error {
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		bytes, _ := ioutil.ReadAll(resp.Body)
-		log.Printf("HTTP request failed: %s %s", err, string(bytes))
-		return fmt.Errorf("发送请求失败: %s", err.Error())
+		log.Error().Msgf("请求失败 err=%s data=%s", err, string(bytes))
+		return fmt.Errorf("请求失败[%s]", err.Error())
 	}
 	defer resp.Body.Close() //nolint
 	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
 		bytes, _ := ioutil.ReadAll(resp.Body)
-		log.Printf("HTTP request failed: statusCode=%d ,%s ", resp.StatusCode, string(bytes))
+		log.Error().Msgf("请求失败: statusCode=%d,data=%s ", resp.StatusCode, string(bytes))
 		if resp.StatusCode == http.StatusUnauthorized {
 			return fmt.Errorf("认证失败: %d, 错误的用户名或密码 ", resp.StatusCode)
 		}
@@ -662,14 +667,13 @@ func (h *httpAction) DoRequest(v interface{}) error {
 	if "application/xml" == caye {
 		err := xml.NewDecoder(resp.Body).Decode(v)
 		if err != nil {
-			log.Printf("Parser response xml data failed: %s", err)
-			return fmt.Errorf("解析xml返回值失败: %s", err.Error())
+			log.Error().Msgf("解析xml数据失败 err=%s", err)
+			return fmt.Errorf("解析xml数据失败[%s]", err.Error())
 		}
 		return err
 	}
 	if "application/json" == caye {
 		return xml.NewDecoder(resp.Body).Decode(v)
-
 	}
 	return err
 }
@@ -679,14 +683,13 @@ func (h *httpAction) DoRequest(v interface{}) error {
 // MaxRetriesExceeded error.
 func doWithRetry(actionDescription string, maxRetries int, sleepBetweenRetries time.Duration, action func() error) error {
 	for i := 0; i <= maxRetries; i++ {
-		log.Print(actionDescription)
-
+		log.Debug().Msg(actionDescription)
 		err := action()
 		if err == nil {
 			return nil
 		}
 
-		log.Printf("%s returned an error: %s. Sleeping for %s and will try again.\n", actionDescription, err.Error(), sleepBetweenRetries)
+		log.Error().Msgf("%s返回错误: err=%s ,睡眠%s并重试", actionDescription, err.Error(), sleepBetweenRetries)
 		time.Sleep(sleepBetweenRetries)
 	}
 
@@ -700,7 +703,7 @@ type MaxRetriesExceeded struct {
 }
 
 func (err MaxRetriesExceeded) Error() string {
-	return fmt.Sprintf("'%s' unsuccessful after %d retries", err.Description, err.MaxRetries)
+	return fmt.Sprintf("'%s'操作没有成功,将重试%d次", err.Description, err.MaxRetries)
 }
 
 func GetLocalIP() string {
