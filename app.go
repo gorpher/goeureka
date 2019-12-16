@@ -1,5 +1,7 @@
 package goeureka
 
+import "github.com/rs/zerolog"
+
 type ActionType string
 
 const (
@@ -89,4 +91,5 @@ type AppInfo struct {
 	UserName   string // 注册中心认证的用户名
 	Password   string // 注册中心认证的密码
 	EurekaURL  string // 注册中心认证的url地址
+	LogLevel   zerolog.Level
 }

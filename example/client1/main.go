@@ -120,7 +120,7 @@ func startWebServer(port int) {
 		w.WriteHeader(http.StatusOK)
 		w.Write(v)
 	})
-	log.Printf("Starting HTTP service at %d \n", port)
+	log.Printf("Starting HTTP service at %d ", port)
 	err := http.ListenAndServe(fmt.Sprintf(":%d", port), nil)
 	if err != nil {
 		log.Printf("An error occurred starting HTTP listener at port %d \n", port)

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"io"
 	"io/ioutil"
@@ -127,6 +128,11 @@ var defaultUrl = "http://localhost:8761" //默认注册中心地址
 
 // 新建goeureka客户端
 func New(appInfo *AppInfo) (*Client, error) {
+	log.Logger = log.Output(zerolog.ConsoleWriter{
+		Out:        os.Stdout,
+		TimeFormat: "2006-01-02 15:04:05",
+	})
+	zerolog.SetGlobalLevel(appInfo.LogLevel)
 	if appInfo.Port == 0 {
 		return nil, fmt.Errorf("端口port不能为空")
 	}
