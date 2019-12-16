@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"github.com/rs/zerolog/log"
 	"io"
 	"io/ioutil"
-	"log"
 	"math"
 	"math/rand"
 	"net"
@@ -237,7 +237,7 @@ func (c *Client) Register() error {
 	}
 	data, err := json.Marshal(inst)
 	if err != nil {
-		log.Println(" Instance mode to json err:", err)
+		log.Print(" Instance mode to json err:", err)
 		return err
 	}
 	action := httpAction{
@@ -250,16 +250,16 @@ func (c *Client) Register() error {
 	}
 
 	err = doWithRetry("Register Eureka Server", 3, 3*time.Second, func() error {
-		log.Println("Trying to Register to Eureka Server...")
+		log.Print("Trying to Register to Eureka Server...")
 		err = action.DoRequest(nil)
 		if err == nil {
-			log.Println("Register success...")
+			log.Print("Register success...")
 			return nil
 		}
 		return err
 	})
 	if err != nil {
-		log.Println("registry err: ", err)
+		log.Print("registry err: ", err)
 		return err
 	}
 	// 刷新获取所有服务加入到缓存
@@ -303,7 +303,7 @@ func (c *Client) StartHeartbeat() error {
 	}
 	data, err := json.Marshal(inst)
 	if err != nil {
-		log.Println(" Instance mode to json err:", err)
+		log.Print(" Instance mode to json err:", err)
 		return err
 	}
 	action := httpAction{
@@ -317,20 +317,20 @@ func (c *Client) StartHeartbeat() error {
 
 	// 心跳请求函数
 	var heartbeat = func() error {
-		log.Println("Trying to send Instance heart beat...")
+		log.Print("Trying to send Instance heart beat...")
 		err := action.DoRequest(nil)
 		if err != nil {
-			log.Println("send Instance heart beat failed!!!")
+			log.Print("send Instance heart beat failed!!!")
 			return err
 		}
-		log.Println("send Instance heart beat success!")
+		log.Print("send Instance heart beat success!")
 		return nil
 	}
 	for {
 		// 每隔30秒发送一次心跳
 		err := heartbeat()
 		if err != nil {
-			log.Println("send heart beat err: ", err)
+			log.Print("send heart beat err: ", err)
 		}
 		select {
 		case <-time.After(30 * time.Second):
@@ -344,7 +344,7 @@ func (c *Client) StartHeartbeat() error {
 // 下线
 // DELETE {{url}}/eureka/apps/{{appID}}/{{instanceID}}
 func (c *Client) Deregister() error {
-	log.Println("Trying to deregister application...")
+	log.Print("Trying to deregister application...")
 	// 停止发送心跳
 	c.stopChan <- struct{}{}
 	// Deregister
@@ -357,17 +357,17 @@ func (c *Client) Deregister() error {
 	}
 	err := action.DoRequest(nil)
 	if err != nil {
-		log.Println("Deregistered application, exiting. Check Client...")
+		log.Print("Deregistered application, exiting. Check Client...")
 		return err
 	}
-	log.Println("deregister application success")
+	log.Print("deregister application success")
 	return nil
 }
 
 // 获取所有实例
 // GET {{url}}/eureka/apps
 func (c *Client) GetApps() (Applications, error) {
-	log.Println("Trying to query for all appID instances...")
+	log.Print("Trying to query for all appID instances...")
 	action := httpAction{
 		Url:         c.AppInfo.EurekaURL + "/eureka/apps",
 		Method:      "GET",
@@ -378,7 +378,7 @@ func (c *Client) GetApps() (Applications, error) {
 	data := new(Applications)
 	err := action.DoRequest(data)
 	if err != nil {
-		log.Println("get applications err")
+		log.Print("get applications err")
 		return Applications{}, err
 	}
 
@@ -388,7 +388,7 @@ func (c *Client) GetApps() (Applications, error) {
 // 获取指定服务的实例
 // GET {{url}}/eureka/apps/{{appID}}
 func (c *Client) GetAppInstances(appID string) (Application, error) {
-	log.Println("Trying to query for a specific appID/instanceID...")
+	log.Print("Trying to query for a specific appID/instanceID...")
 	action := httpAction{
 		Url:         c.AppInfo.EurekaURL + "/eureka/apps/" + appID,
 		Method:      "GET",
@@ -407,7 +407,7 @@ func (c *Client) GetAppInstances(appID string) (Application, error) {
 // 查询同服务的所有实例
 // GET {{url}}/eureka/apps/{{appID}}
 func (c *Client) GetOwnAppInstances() (Application, error) {
-	log.Println("Trying to query for a specific appID/instanceID...")
+	log.Print("Trying to query for a specific appID/instanceID...")
 	action := httpAction{
 		Url:      c.AppInfo.EurekaURL + "/eureka/apps/" + c.Instance.App,
 		Method:   "GET",
@@ -425,7 +425,7 @@ func (c *Client) GetOwnAppInstances() (Application, error) {
 // 查询自己注册的服务信息
 // GET {{url}}/eureka/apps/{{appID}}/{{appID}}:{{instanceID}}
 func (c *Client) GetOwnAppInstance() (Instance, error) {
-	log.Println("Trying to request Own application Instance detail...")
+	log.Print("Trying to request Own application Instance detail...")
 	action := httpAction{
 		Url:      c.AppInfo.EurekaURL + "/eureka/apps/" + c.Instance.App + "/" + c.Instance.InstanceID,
 		Method:   "GET",
@@ -442,7 +442,7 @@ func (c *Client) GetOwnAppInstance() (Instance, error) {
 
 // 查询指定服务实例
 func (c *Client) GetAppInstanceByID(appID string, instanceID string) (Instance, error) {
-	log.Println("Trying to request Own application Instance detail...")
+	log.Print("Trying to request Own application Instance detail...")
 	action := httpAction{
 		Url:      c.AppInfo.EurekaURL + "/eureka/apps/" + appID + "/" + instanceID,
 		Method:   http.MethodGet,
@@ -460,7 +460,7 @@ func (c *Client) GetAppInstanceByID(appID string, instanceID string) (Instance, 
 //更改自己实例状态
 // PUT {{url}}/eureka/apps/{{appID}}/{{instanceID}}/status?value=OUT_OF_SERVICE
 func (c *Client) UpdateOwnAppInstanceStatus(status InstanceStatus) error {
-	log.Println("Trying to change Instance status ...")
+	log.Print("Trying to change Instance status ...")
 	action := httpAction{
 		Url:         c.AppInfo.EurekaURL + "/eureka/apps/" + c.Instance.App + "/" + c.Instance.InstanceID + "/status?value=" + string(status),
 		Method:      http.MethodPut,
@@ -472,14 +472,14 @@ func (c *Client) UpdateOwnAppInstanceStatus(status InstanceStatus) error {
 	var doHeartBeat bool
 	switch status {
 	case DOWN:
-		log.Println("更改状态下线:", DOWN)
+		log.Print("更改状态下线:", DOWN)
 		if c.heartbeats {
 			c.stopChan <- struct{}{}
 		}
 		for c.heartbeats {
 		}
 	case OUT_OF_SERVICE:
-		log.Println("更改状态下线:", OUT_OF_SERVICE)
+		log.Print("更改状态下线:", OUT_OF_SERVICE)
 		if c.heartbeats {
 			c.stopChan <- struct{}{}
 		}
@@ -494,7 +494,7 @@ func (c *Client) UpdateOwnAppInstanceStatus(status InstanceStatus) error {
 	}
 	err := action.DoRequest(nil)
 	if err == nil && doHeartBeat {
-		log.Println("重新开始发送心跳...")
+		log.Print("重新开始发送心跳...")
 		c.StartHeartbeat()
 	}
 	return err
@@ -503,7 +503,7 @@ func (c *Client) UpdateOwnAppInstanceStatus(status InstanceStatus) error {
 //更新元数据
 //{{url}}/eureka/v2/apps/{{appID}}/{{instanceID}}/metadata?key=value
 func (c *Client) UpdateOwnAppInstanceMetadata(value map[string]string) error {
-	log.Println("Trying to update metadata ...")
+	log.Print("Trying to update metadata ...")
 	vk := url.Values{}
 	for k := range value {
 		vk.Add(k, value[k])
@@ -523,7 +523,7 @@ func (c *Client) UpdateOwnAppInstanceMetadata(value map[string]string) error {
 // 查询vip下的实例
 //GET {{url}}/eureka/vips/{{vipAddress}}
 func (c *Client) GetAppInstanceVip(vip string) (Applications, error) {
-	log.Println("Trying to query Instance in the a svip ...")
+	log.Print("Trying to query Instance in the a svip ...")
 	action := httpAction{
 		Url:      c.AppInfo.EurekaURL + "/eureka/vips/" + vip,
 		Method:   http.MethodGet,
@@ -541,7 +541,7 @@ func (c *Client) GetAppInstanceVip(vip string) (Applications, error) {
 // 查询svip下的实例
 //GET {{url}}/eureka/svips/{{svipAddress}}
 func (c *Client) GetAppInstanceSVip(svips string) (Applications, error) {
-	log.Println("Trying to query Instance in the a svip ...")
+	log.Print("Trying to query Instance in the a svip ...")
 	action := httpAction{
 		Url:      c.AppInfo.EurekaURL + "/eureka/svips/" + svips,
 		Method:   http.MethodGet,
@@ -673,7 +673,7 @@ func (h *httpAction) DoRequest(v interface{}) error {
 // MaxRetriesExceeded error.
 func doWithRetry(actionDescription string, maxRetries int, sleepBetweenRetries time.Duration, action func() error) error {
 	for i := 0; i <= maxRetries; i++ {
-		log.Println(actionDescription)
+		log.Print(actionDescription)
 
 		err := action()
 		if err == nil {

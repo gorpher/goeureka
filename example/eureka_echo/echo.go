@@ -5,27 +5,32 @@ import (
 	"flag"
 	"fmt"
 	"github.com/gorpher/goeureka"
-	"log"
+	"io"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"strconv"
+
+	"github.com/rs/zerolog/log"
 )
 
 var client *goeureka.Client
 
 func main() {
-	app := flag.String("app", "golang-service", "服务名,默认值是golang-service")
-	port := flag.Int("port", 8081, "端口,默认值是8080")
+	app := flag.String("app", "golang-service-echo", "服务名,默认值是golang-service-echo")
+	port := flag.Int("port", 9999, "端口,默认值是8080")
+	username := flag.String("username", "fitmgr", "用户名,默认值是fitmgr")
+	password := flag.String("password", "fitmgr", "密码,默认值是fitmgr")
+	eurekaurl := flag.String("eurekaurl", "http://127.0.0.1:8761", "eureka链接地址,默认值是http://127.0.0.1:8761")
 	flag.Parse()
 	var err error
 	client, err = goeureka.New(&goeureka.AppInfo{
 		AppID:     *app,
 		Port:      *port,
-		UserName:  "fitmgr",
-		Password:  "fitmgr",
-		EurekaURL: "http://127.0.0.1:8761",
+		UserName:  *username,
+		Password:  *password,
+		EurekaURL: *eurekaurl,
 	}) // Performs eurekaClient registration
 	if err != nil {
 		panic(err)
@@ -34,7 +39,6 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-
 	go func() {
 		ch := makeShutdownCh()
 		select {
@@ -79,6 +83,14 @@ func startWebServer(port int) {
 		writer.WriteHeader(http.StatusOK)
 		writer.Write([]byte(healthData)) //nolint
 	})
+	http.HandleFunc("/echo", func(w http.ResponseWriter, r *http.Request) {
+		for i := range r.Header {
+			w.Header().Add(i, r.Header.Get(i))
+		}
+		w.WriteHeader(http.StatusOK)
+		io.Copy(w, r.Body) //nolint
+		defer r.Body.Close()
+	})
 	http.HandleFunc("/info", func(w http.ResponseWriter, r *http.Request) {
 		ip := goeureka.GetLocalIP()
 		m := map[string]string{
@@ -98,6 +110,6 @@ func startWebServer(port int) {
 	err := http.ListenAndServe(fmt.Sprintf(":%d", port), nil)
 	if err != nil {
 		log.Printf("An error occurred starting HTTP listener at port %d \n", port)
-		log.Println("Error: " + err.Error())
+		log.Print("Error: " + err.Error())
 	}
 }

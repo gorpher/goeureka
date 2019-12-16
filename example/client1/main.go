@@ -5,8 +5,8 @@ import (
 	"flag"
 	"fmt"
 	"github.com/gorpher/goeureka"
+	"github.com/rs/zerolog/log"
 	"io/ioutil"
-	"log"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -88,7 +88,7 @@ func startWebServer(port int) {
 		}
 		resp, err := client.Do(request)
 		if err != nil {
-			log.Println(err)
+			log.Print(err)
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte(err.Error()))
 			return
@@ -124,6 +124,6 @@ func startWebServer(port int) {
 	err := http.ListenAndServe(fmt.Sprintf(":%d", port), nil)
 	if err != nil {
 		log.Printf("An error occurred starting HTTP listener at port %d \n", port)
-		log.Println("Error: " + err.Error())
+		log.Print("Error: " + err.Error())
 	}
 }
