@@ -361,6 +361,7 @@ func (c *Client) Deregister() error {
 		UserName:    c.AppInfo.UserName,
 		Password:    c.AppInfo.Password,
 	}
+	log.Debug().Msgf("下线 URL=%s", action.Url)
 	err := action.DoRequest(nil)
 	if err != nil {
 		log.Error().AnErr("从注册中心注销失败", err)
