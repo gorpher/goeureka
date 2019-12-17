@@ -417,10 +417,11 @@ func (c *Client) GetAppInstances(appID string) (Application, error) {
 func (c *Client) GetOwnAppInstances() (Application, error) {
 	log.Debug().Msg("尝试查询指定服务的所有实例")
 	action := httpAction{
-		Url:      c.AppInfo.EurekaURL + "/eureka/apps/" + c.Instance.App,
-		Method:   "GET",
-		UserName: c.AppInfo.UserName,
-		Password: c.AppInfo.Password,
+		Url:         c.AppInfo.EurekaURL + "/eureka/apps/" + c.Instance.App,
+		Method:      "GET",
+		ContentType: "application/json",
+		UserName:    c.AppInfo.UserName,
+		Password:    c.AppInfo.Password,
 	}
 	data := new(Application)
 	err := action.DoRequest(data)
@@ -436,10 +437,11 @@ func (c *Client) GetOwnAppInstances() (Application, error) {
 func (c *Client) GetOwnAppInstance() (Instance, error) {
 	log.Debug().Msg("尝试查询自己注册的服务信息")
 	action := httpAction{
-		Url:      c.AppInfo.EurekaURL + "/eureka/apps/" + c.Instance.App + "/" + c.Instance.InstanceID,
-		Method:   "GET",
-		UserName: c.AppInfo.UserName,
-		Password: c.AppInfo.Password,
+		Url:         c.AppInfo.EurekaURL + "/eureka/apps/" + c.Instance.App + "/" + c.Instance.InstanceID,
+		Method:      "GET",
+		ContentType: "application/json",
+		UserName:    c.AppInfo.UserName,
+		Password:    c.AppInfo.Password,
 	}
 	data := new(Instance)
 	err := action.DoRequest(data)
@@ -454,10 +456,11 @@ func (c *Client) GetOwnAppInstance() (Instance, error) {
 func (c *Client) GetAppInstanceByID(appID string, instanceID string) (Instance, error) {
 	log.Debug().Msg("尝试查询指定服务实例信息")
 	action := httpAction{
-		Url:      c.AppInfo.EurekaURL + "/eureka/apps/" + appID + "/" + instanceID,
-		Method:   http.MethodGet,
-		UserName: c.AppInfo.UserName,
-		Password: c.AppInfo.Password,
+		Url:         c.AppInfo.EurekaURL + "/eureka/apps/" + appID + "/" + instanceID,
+		Method:      http.MethodGet,
+		ContentType: "application/json",
+		UserName:    c.AppInfo.UserName,
+		Password:    c.AppInfo.Password,
 	}
 	data := new(Instance)
 	err := action.DoRequest(data)
