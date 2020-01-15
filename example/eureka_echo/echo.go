@@ -5,14 +5,13 @@ import (
 	"flag"
 	"fmt"
 	"github.com/gorpher/goeureka"
+	"github.com/rs/zerolog/log"
 	"io"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"strconv"
-
-	"github.com/rs/zerolog/log"
 )
 
 var client *goeureka.Client
@@ -39,13 +38,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	go func() {
-		ch := makeShutdownCh()
-		select {
-		case <-ch:
-			client.Deregister()
-		}
-	}()
+
 	startWebServer(*port) // Starts HTTP service  (async)
 }
 
@@ -106,10 +99,17 @@ func startWebServer(port int) {
 		w.WriteHeader(http.StatusOK)
 		w.Write(v)
 	})
-	log.Printf("Starting HTTP service at %d \n", port)
-	err := http.ListenAndServe(fmt.Sprintf(":%d", port), nil)
-	if err != nil {
-		log.Printf("An error occurred starting HTTP listener at port %d \n", port)
-		log.Print("Error: " + err.Error())
+	go func() {
+		log.Printf("Starting HTTP service at %d \n", port)
+		err := http.ListenAndServe(fmt.Sprintf(":%d", port), nil)
+		if err != nil {
+			log.Printf("An error occurred starting HTTP listener at port %d \n", port)
+			log.Print("Error: " + err.Error())
+		}
+	}()
+	ch := makeShutdownCh()
+	select {
+	case <-ch:
+		client.Deregister()
 	}
 }

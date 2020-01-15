@@ -4,9 +4,10 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/afex/hystrix-go/hystrix"
 	"github.com/gorpher/goeureka"
 	"github.com/rs/zerolog/log"
-	"io/ioutil"
+	"net"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -36,13 +37,6 @@ func main() {
 		panic(err)
 	}
 
-	go func() {
-		ch := makeShutdownCh()
-		select {
-		case <-ch:
-			client.Deregister()
-		}
-	}()
 	startWebServer(*port) // Starts HTTP service  (async)
 }
 
@@ -63,7 +57,6 @@ func makeShutdownCh() <-chan struct{} {
 			resultCh <- struct{}{}
 		}
 	}()
-
 	return resultCh
 }
 
@@ -82,23 +75,18 @@ func startWebServer(port int) {
 	})
 	http.HandleFunc("/call", func(w http.ResponseWriter, r *http.Request) {
 		m := map[string]string{}
-		request, err := http.NewRequest(http.MethodGet, "http://golang-service/info", nil)
+		request, err := http.NewRequest(http.MethodGet, "http://127.0.0.1:9999/info", nil)
 		if err != nil {
 			panic(err)
 		}
-		resp, err := client.Do(request)
+		bytes, err := client.Request("golang-service-echo", request)
 		if err != nil {
 			log.Print(err)
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte(err.Error()))
 			return
 		}
-		defer resp.Body.Close() //nolint
-		all, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			panic(err)
-		}
-		m["call"] = string(all)
+		m["call"] = string(bytes)
 		m["desc"] = "调用其他服务成功"
 		v, _ := json.Marshal(m)
 		w.Header().Add("Content-Type", "application/json")
@@ -120,10 +108,21 @@ func startWebServer(port int) {
 		w.WriteHeader(http.StatusOK)
 		w.Write(v)
 	})
-	log.Printf("Starting HTTP service at %d ", port)
-	err := http.ListenAndServe(fmt.Sprintf(":%d", port), nil)
-	if err != nil {
-		log.Printf("An error occurred starting HTTP listener at port %d \n", port)
-		log.Print("Error: " + err.Error())
+
+	go func() {
+		log.Printf("Starting HTTP service at %d ", port)
+		err := http.ListenAndServe(fmt.Sprintf(":%d", port), nil)
+		if err != nil {
+			log.Printf("An error occurred starting HTTP listener at port %d \n", port)
+			log.Print("Error: " + err.Error())
+		}
+	}()
+	hystrixStreamHandler := hystrix.NewStreamHandler()
+	hystrixStreamHandler.Start()
+	go http.ListenAndServe(net.JoinHostPort("", "8181"), hystrixStreamHandler)
+	ch := makeShutdownCh()
+	select {
+	case <-ch:
+		client.Deregister()
 	}
 }

@@ -23,7 +23,7 @@ var xmldata = `<applications>
     <apps__hashcode>UP_2_</apps__hashcode>
     <application>
         <name>SPRING-CLOUD-EUREKA-CLIENT</name>
-        <Instance>
+        <instance>
             <instanceId>MAX.lan:spring-cloud-eureka-client:8791</instanceId>
             <hostName>192.168.199.239</hostName>
             <app>SPRING-CLOUD-EUREKA-CLIENT</app>
@@ -54,8 +54,8 @@ var xmldata = `<applications>
             <lastUpdatedTimestamp>1570688725492</lastUpdatedTimestamp>
             <lastDirtyTimestamp>1570688725445</lastDirtyTimestamp>
             <actionType>ADDED</actionType>
-        </Instance>
-        <Instance>
+        </instance>
+        <instance>
             <instanceId>MAX.lan:spring-cloud-eureka-client:1000</instanceId>
             <hostName>192.168.199.239</hostName>
             <app>SPRING-CLOUD-EUREKA-CLIENT</app>
@@ -86,11 +86,11 @@ var xmldata = `<applications>
             <lastUpdatedTimestamp>1570688787113</lastUpdatedTimestamp>
             <lastDirtyTimestamp>1570688787035</lastDirtyTimestamp>
             <actionType>ADDED</actionType>
-        </Instance>
+        </instance>
     </application>
     <application>
         <name>TF-SERVICE1</name>
-        <Instance>
+        <instance>
             <instanceId>tf-service1:3125</instanceId>
             <hostName>127.0.0.1</hostName>
             <app>TF-SERVICE1</app>
@@ -121,7 +121,7 @@ var xmldata = `<applications>
             <lastUpdatedTimestamp>1570670943008</lastUpdatedTimestamp>
             <lastDirtyTimestamp>1529391461000</lastDirtyTimestamp>
             <actionType>ADDED</actionType>
-        </Instance>
+        </instance>
     </application>
 </applications>`
 
@@ -139,7 +139,10 @@ func TestNoneParseXmlData(t *testing.T) {
 // 测试解析有数据的xml
 func TestHaveParseXmlData(t *testing.T) {
 	app := new(goeureka.Applications)
-	xml.Unmarshal([]byte(xmldata), &app)
+	err := xml.Unmarshal([]byte(xmldata), &app)
+	if err != nil {
+		t.Errorf("反序列化xml 结果文件失败 %v", err)
+	}
 	// 第一次转换前检查一次
 	checkAppData(t, *app)
 	data, err := xml.Marshal(*app)

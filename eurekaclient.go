@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 	"io"
 	"io/ioutil"
 	"math"
@@ -18,6 +16,12 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/afex/hystrix-go/hystrix"
+	"github.com/eapache/go-resiliency/retrier"
+	"github.com/pkg/errors"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 )
 
 type serviceCache struct {
@@ -26,6 +30,7 @@ type serviceCache struct {
 	timeout time.Duration
 }
 
+// 开启协程,清除缓存
 func NewServiceCache(timeout time.Duration) *serviceCache {
 	cache := &serviceCache{v: map[string]map[int64]string{}, timeout: timeout}
 	go func() {
@@ -64,6 +69,7 @@ func (s *serviceCache) Set(k, v string) int64 {
 	return key
 }
 
+// 根据服务名,获取第一个服务实例信息
 func (s *serviceCache) GetFirst(k string) string {
 	s.RLock()
 	defer s.RUnlock()
@@ -79,6 +85,8 @@ func (s *serviceCache) GetFirst(k string) string {
 	}
 	return ""
 }
+
+// 根据key,获取最后一个服务实例
 func (s *serviceCache) GetLast(k string) string {
 	s.RLock()
 	defer s.RUnlock()
@@ -95,6 +103,7 @@ func (s *serviceCache) GetLast(k string) string {
 	return ""
 }
 
+// 获取服务实例
 func (s *serviceCache) Get(k string) string {
 	s.RLock()
 	defer s.RUnlock()
@@ -106,6 +115,8 @@ func (s *serviceCache) Get(k string) string {
 	}
 	return ""
 }
+
+// 删除服务实例
 func (s *serviceCache) Delete(k string) {
 	s.Lock()
 	defer s.Unlock()
@@ -119,8 +130,9 @@ type Client struct {
 	AppInfo         AppInfo
 	Instance        Instance
 	serviceCache    *serviceCache
-	heartbeats      bool          //心跳中
+	heartbeatCh     chan struct{} // 心跳通道
 	stopChan        chan struct{} //停止发送心跳
+	stopChanDone    chan struct{} //停止发送心跳成功
 	originTransport http.RoundTripper
 }
 
@@ -132,6 +144,7 @@ func New(appInfo *AppInfo) (*Client, error) {
 		Out:        os.Stdout,
 		TimeFormat: "2006-01-02 15:04:05",
 	})
+	// 设置日志等级
 	zerolog.SetGlobalLevel(appInfo.LogLevel)
 	if appInfo.Port == 0 {
 		return nil, fmt.Errorf("端口port不能为空")
@@ -175,11 +188,14 @@ func New(appInfo *AppInfo) (*Client, error) {
 			},
 		},
 		stopChan:        make(chan struct{}, 1),
-		serviceCache:    NewServiceCache(time.Second * 5),
+		stopChanDone:    make(chan struct{}, 1),
+		heartbeatCh:     make(chan struct{}, 1),
+		serviceCache:    NewServiceCache(time.Second * 5), //新建缓存器
 		originTransport: http.DefaultTransport,
 	}
 	c.AppInfo = *appInfo
 	hostname, _ := os.Hostname() // nolint
+	//查找当前hostname
 	if c.AppInfo.HostName == "" {
 		ips, err := net.LookupIP(hostname)
 		if err == nil && len(ips) > 0 {
@@ -214,7 +230,7 @@ func New(appInfo *AppInfo) (*Client, error) {
 	c.Instance.HealthCheckUrl = "http://" + c.Instance.HostName + ":" + strconv.Itoa(c.Instance.Port.Value) + "/health"
 
 	c.Instance.VipAddress = c.Instance.HostName
-	c.Instance.SecureVipAddress = GetLocalIP()
+	c.Instance.SecureVipAddress = GetLocalIP() //获取本地IP
 	return c, nil
 }
 
@@ -243,8 +259,8 @@ func (c *Client) Register() error {
 	}
 	data, err := json.Marshal(inst)
 	if err != nil {
-		log.Debug().AnErr("解析json参数错误", err)
-		return err
+		log.Debug().AnErr("注册服务实例失败:序列化实例信息失败", err)
+		return errors.Wrap(err, "注册服务实例失败")
 	}
 	action := httpAction{
 		Url:         c.AppInfo.EurekaURL + "/eureka/apps/" + c.Instance.App,
@@ -265,21 +281,54 @@ func (c *Client) Register() error {
 		return err
 	})
 	if err != nil {
-		log.Error().AnErr("注册失败", err)
-		return err
+		log.Error().AnErr(fmt.Sprintf("注册服务实例失败 url=%s", action.Url), err)
+		return errors.Wrap(err, "注册服务实例失败,请求eureka server失败")
 	}
 	// 刷新获取所有服务加入到缓存
 	go c.refreshAllService()
 
 	// 每隔5秒尝试注册到eureka,直到注册成功.
-	go c.StartHeartbeat() //开始发送心跳
+	go func() {
+		c.enableHeartbeat() //开始发送心跳
+	}()
+	c.starHeartbeats()
 	return err
+}
+
+// 发送心跳
+func (c *Client) starHeartbeats() {
+	//	启动协程接受停止消息和启动消息
+	go func() {
+		log.Debug().Msg("启动一个控制心跳协程,发送心跳命令.")
+	endSend:
+		for {
+			select {
+			case <-time.After(time.Second * 5):
+				log.Debug().Msg("五秒发送心跳一次")
+				c.heartbeatCh <- struct{}{}
+				log.Debug().Msg("五秒发送心跳一次 [完成]")
+			case <-c.stopChan:
+				log.Debug().Msg("接受到停止信号 停止发送心跳")
+				break endSend
+			}
+		}
+		c.stopChanDone <- struct{}{}
+	}()
+}
+
+// 停止发送心跳
+func (c *Client) stopHeartbeats() <-chan struct{} {
+	if len(c.stopChan) == 0 {
+		c.stopChan <- struct{}{}
+	}
+	return c.stopChanDone
 }
 
 // 刷新所有服务
 func (c *Client) refreshAllService() {
 	apps, err := c.GetApps()
 	if err != nil {
+		log.Error().AnErr("刷新所有服务失败", err)
 		return
 	}
 	if len(apps.Application) > 0 {
@@ -293,15 +342,9 @@ func (c *Client) refreshAllService() {
 	}
 }
 
-// 停止发送心跳
-func (c *Client) StopHeartbeat() {
-	c.stopChan <- struct{}{}
-}
-
-// 发送心跳
+// 开启心跳
 // PUT {{url}}/eureka/apps/{{appID}}/{{instanceID}}
-func (c *Client) StartHeartbeat() error {
-	c.heartbeats = true
+func (c *Client) enableHeartbeat() error {
 	inst := struct {
 		Instance Instance `json:"instance"`
 	}{
@@ -309,7 +352,7 @@ func (c *Client) StartHeartbeat() error {
 	}
 	data, err := json.Marshal(inst)
 	if err != nil {
-		log.Debug().AnErr("解析json参数错误", err)
+		log.Debug().AnErr("发送心跳失败,序列化请求参数失败", err)
 		return err
 	}
 	action := httpAction{
@@ -320,7 +363,6 @@ func (c *Client) StartHeartbeat() error {
 		Password:    c.AppInfo.Password,
 		Body:        string(data),
 	}
-
 	// 心跳请求函数
 	var heartbeat = func() error {
 		log.Debug().Msgf("尝试发送心跳信息 InstanceID=%s", inst.Instance.InstanceID)
@@ -332,19 +374,16 @@ func (c *Client) StartHeartbeat() error {
 		log.Debug().Msg("发送心跳信息成功")
 		return nil
 	}
-	for {
+
+	//监听通道,如果有消息则发送心跳
+	for range c.heartbeatCh {
 		// 每隔30秒发送一次心跳
 		err := heartbeat()
 		if err != nil {
 			log.Error().AnErr("发送心跳信息失败", err)
 		}
-		select {
-		case <-time.After(30 * time.Second):
-		case <-c.stopChan:
-			c.heartbeats = false
-			return nil
-		}
 	}
+	return nil
 }
 
 // 下线
@@ -352,7 +391,13 @@ func (c *Client) StartHeartbeat() error {
 func (c *Client) Deregister() error {
 	log.Debug().Msg("尝试从注册中心中注销,下线")
 	// 停止发送心跳
-	c.stopChan <- struct{}{}
+	toStopHeartbeats := c.stopHeartbeats()
+	select {
+	case <-time.After(time.Second * 3):
+		log.Warn().Msg("调用停止发送心跳函数,执行超时,开始下线")
+	case <-toStopHeartbeats:
+		log.Debug().Msgf("调用停止发送心跳函数,停止发送心跳 [成功]")
+	}
 	// Deregister
 	action := httpAction{
 		Url:         c.AppInfo.EurekaURL + "/eureka/apps/" + c.Instance.App + "/" + c.Instance.InstanceID,
@@ -487,29 +532,33 @@ func (c *Client) UpdateOwnAppInstanceStatus(status InstanceStatus) error {
 	switch status {
 	case DOWN:
 		log.Debug().Msgf("更改状态下线 status=%s", DOWN)
-		if c.heartbeats {
-			c.stopChan <- struct{}{}
-		}
-		for c.heartbeats {
+		// 停止发送心跳
+		toStopHeartbeats := c.stopHeartbeats()
+		select {
+		case <-time.After(time.Second * 3):
+			log.Warn().Msgf("调用停止发送心跳函数,执行超时,开始更新状态 %s", DOWN)
+		case <-toStopHeartbeats:
+			log.Debug().Msgf("调用停止发送心跳函数,停止发送心跳 [成功]")
 		}
 	case OUT_OF_SERVICE:
 		log.Debug().Msgf("更改状态下线 status=%s", OUT_OF_SERVICE)
-		if c.heartbeats {
-			c.stopChan <- struct{}{}
-		}
-		for c.heartbeats {
+		// 停止发送心跳
+		toStopHeartbeats := c.stopHeartbeats()
+		select {
+		case <-time.After(time.Second * 3):
+			log.Warn().Msgf("调用停止发送心跳函数,执行超时,开始更新状态 %s", OUT_OF_SERVICE)
+		case <-toStopHeartbeats:
+			log.Debug().Msgf("调用停止发送心跳函数,停止发送心跳 [成功]")
 		}
 	case UNKNOWN:
 	case UP:
-		if !c.heartbeats {
-			doHeartBeat = true
-		}
+		c.startHeartBeat()
 	case STARTING:
 	}
 	err := action.DoRequest(nil)
 	if err == nil && doHeartBeat {
 		log.Debug().Msg("重新开始发送心跳")
-		c.StartHeartbeat()
+		c.startHeartBeat()
 	}
 	return err
 }
@@ -572,22 +621,13 @@ func (c *Client) GetAppInstanceSVip(svips string) (Applications, error) {
 	return *data, err
 }
 
-// 通过自己定义请求其他服务
-func (c *Client) Do(r *http.Request) (*http.Response, error) {
-	client := &http.Client{
-		Transport: c,
-		Timeout:   time.Second * 5,
-	}
-	return client.Do(r)
-}
-
 func (c *Client) RoundTrip(r *http.Request) (*http.Response, error) {
 	hostname := r.URL.Hostname()
 	instances := c.serviceCache.Get(hostname)
-	if len(instances) == 0 && hostname != "" {
+	if len(instances) == 0 && hostname != "" && net.ParseIP(hostname) == nil {
 		app, err := c.GetAppInstances(hostname)
 		if err != nil {
-			return nil, ErrorNotFoundService.Wrap(err)
+			return nil, errors.Wrap(err, "获取服务失败")
 		}
 		if app.Name != "" {
 			for i := range app.Instance {
@@ -595,20 +635,63 @@ func (c *Client) RoundTrip(r *http.Request) (*http.Response, error) {
 			}
 		}
 	}
-	homeric := c.serviceCache.Get(hostname)
-	if homeric == "" {
-		return &http.Response{}, fmt.Errorf("没有找到服务: %s", hostname)
-	}
-	host := strings.ReplaceAll(r.URL.Host, hostname, homeric)
-	r.URL.Host = host
 	go c.refreshAllService()
 	return c.originTransport.RoundTrip(r)
 }
 
 // 通过request装饰器请求其他服务
-func (c *Client) Request(req *http.Request) (*http.Response, error) {
-	client := &http.Client{Transport: &http.Transport{}}
-	return client.Do(req)
+func (c *Client) Request(serviceName string, req *http.Request) ([]byte, error) {
+	hystrix.DefaultTimeout = 5000
+	output := make(chan []byte, 1)
+	errors := hystrix.Go(serviceName, func() error {
+		return c.callWithRetries(req, output)
+	}, func(err error) error {
+		if err != nil {
+			log.Error().Msgf("回调服务 %s [失败] : %s", serviceName, err)
+		}
+		return err
+	})
+
+	select {
+	case out := <-output:
+		log.Debug().Msgf("调用服务 %s [成功]", serviceName)
+		return out, nil
+
+	case err := <-errors:
+		log.Error().Msgf("从通道中得到错误 服务名 %s : %s", serviceName, err)
+		return nil, err
+	}
+}
+
+func (c *Client) startHeartBeat() {
+
+}
+
+var RETRIES = 3
+
+func (c *Client) callWithRetries(req *http.Request, output chan []byte) error {
+	r := retrier.New(retrier.ConstantBackoff(RETRIES, 100*time.Millisecond), nil)
+	client := &http.Client{Transport: c}
+	attempt := 0
+	err := r.Run(func() error {
+		attempt++
+		resp, err := client.Do(req)
+		if err == nil && resp.StatusCode < 299 {
+			responseBody, err := ioutil.ReadAll(resp.Body)
+			if err == nil {
+				output <- responseBody
+				return nil
+			}
+			return err
+		} else if err == nil {
+			err = fmt.Errorf("不是期待的状态码  [resp.StatusCode=%v]", resp.StatusCode)
+		}
+
+		log.Error().Msgf("请求url=%s , 重试失败, 尝试 %v", req.RequestURI, attempt)
+
+		return err
+	})
+	return err
 }
 
 // 公共请求数据
@@ -640,7 +723,7 @@ func (h *httpAction) DoRequest(v interface{}) error {
 	var body = h.getRequestBody()
 	req, err := http.NewRequest(h.Method, h.Url, body)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "新建http request失败")
 	}
 	// Add headers
 	req.Header.Add("Accept", h.Accept)
@@ -651,14 +734,13 @@ func (h *httpAction) DoRequest(v interface{}) error {
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		bytes, _ := ioutil.ReadAll(resp.Body)
-		log.Error().Msgf("请求失败 err=%s data=%s", err, string(bytes))
-		return fmt.Errorf("请求失败[%s]", err.Error())
+		log.Error().Msgf("请求失败 method=%s url=%s err=%v ", req.Method, req.RequestURI, err)
+		return errors.Wrap(err, "请求失败")
 	}
 	defer resp.Body.Close() //nolint
 	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
 		bytes, _ := ioutil.ReadAll(resp.Body)
-		log.Error().Msgf("请求失败: statusCode=%d,data=%s ", resp.StatusCode, string(bytes))
+		log.Error().Msgf("请求失败: statusCode=%d,method=%s,url=%s,data=%s", resp.StatusCode, req.Method, req.RequestURI, bytes)
 		if resp.StatusCode == http.StatusUnauthorized {
 			return fmt.Errorf("认证失败: %d, 错误的用户名或密码 ", resp.StatusCode)
 		}
@@ -711,17 +793,21 @@ func (err MaxRetriesExceeded) Error() string {
 }
 
 func GetLocalIP() string {
-	adders, err := net.InterfaceAddrs()
+	address, err := net.InterfaceAddrs()
 	if err != nil {
 		return ""
 	}
-	for _, address := range adders {
+	for _, address := range address {
 		// check the address type and if it is not a loopback the display it
-		if ipnet, ok := address.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
-			if ipnet.IP.To4() != nil {
-				return ipnet.IP.String()
+		if inet, ok := address.(*net.IPNet); ok && !inet.IP.IsLoopback() {
+			if inet.IP.To4() != nil {
+				return inet.IP.String()
 			}
 		}
 	}
-	return ""
+	return "127.0.0.1"
+}
+
+func NowStr() string {
+	return time.Now().Format("2006-01-02T15:04:05.000")
 }
