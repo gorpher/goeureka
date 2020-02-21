@@ -21,8 +21,9 @@ import (
 	"github.com/eapache/go-resiliency/retrier"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 )
+
+var log = zerolog.New(os.Stderr).With().Timestamp().Logger()
 
 type serviceCache struct {
 	v map[string]map[int64]string
@@ -127,25 +128,26 @@ func (s *serviceCache) Delete(k string) {
 
 // eureka客户端
 type Client struct {
-	AppInfo         AppInfo
+	AppInfo         *AppInfo
 	Instance        Instance
 	serviceCache    *serviceCache
 	heartbeatCh     chan struct{} // 心跳通道
 	stopChan        chan struct{} //停止发送心跳
 	stopChanDone    chan struct{} //停止发送心跳成功
 	originTransport http.RoundTripper
+	log             zerolog.Logger
 }
 
 var defaultUrl = "http://localhost:8761" //默认注册中心地址
 
 // 新建goeureka客户端
 func New(appInfo *AppInfo) (*Client, error) {
-	log.Logger = log.Output(zerolog.ConsoleWriter{
-		Out:        os.Stdout,
+	log = log.Level(appInfo.LogLevel)
+	log = log.Output(zerolog.ConsoleWriter{
+		Out:        os.Stderr,
 		TimeFormat: "2006-01-02 15:04:05",
 	})
 	// 设置日志等级
-	zerolog.SetGlobalLevel(appInfo.LogLevel)
 	if appInfo.Port == 0 {
 		return nil, fmt.Errorf("端口port不能为空")
 	}
@@ -160,7 +162,7 @@ func New(appInfo *AppInfo) (*Client, error) {
 		return nil, fmt.Errorf("EurekaURL不合法: %v", err)
 	}
 	c := &Client{
-		AppInfo: AppInfo{},
+		AppInfo: appInfo,
 		Instance: Instance{
 			Sid:       "na",
 			CountryId: 1,
@@ -193,22 +195,10 @@ func New(appInfo *AppInfo) (*Client, error) {
 		serviceCache:    NewServiceCache(time.Second * 5), //新建缓存器
 		originTransport: http.DefaultTransport,
 	}
-	c.AppInfo = *appInfo
 	hostname, _ := os.Hostname() // nolint
 	//查找当前hostname
-	if c.AppInfo.HostName == "" {
-		ips, err := net.LookupIP(hostname)
-		if err == nil && len(ips) > 0 {
-			for i := range ips {
-				if !ips[i].IsLoopback() && ips[i].To4() != nil {
-					c.AppInfo.HostName = ips[i].To4().String()
-					break
-				}
-			}
-		}
-	}
-	if hostname == "" {
-		hostname = randomStr(12)
+	if c.AppInfo.HostName == "" && hostname == "" {
+		c.AppInfo.HostName = hostname
 	}
 	if c.AppInfo.InstanceID == "" {
 		c.AppInfo.InstanceID = hostname + ":" + c.AppInfo.AppID + ":" + strconv.Itoa(c.AppInfo.Port)
@@ -219,7 +209,12 @@ func New(appInfo *AppInfo) (*Client, error) {
 	c.Instance.InstanceID = c.AppInfo.InstanceID
 	c.Instance.App = c.AppInfo.AppID
 	c.Instance.HostName = c.AppInfo.HostName
-	c.Instance.IpAddr = c.AppInfo.HostName
+	ips := GetLocalIPS()
+	if len(ips) > 0 {
+		c.Instance.IpAddr = ips[0]
+	}
+	c.Instance.VipAddress = c.AppInfo.AppID
+	c.Instance.SecureVipAddress = c.AppInfo.AppID
 	c.Instance.Status = UP
 	c.Instance.Overriddenstatus = UP
 	c.Instance.Port.Value = c.AppInfo.Port
@@ -229,8 +224,6 @@ func New(appInfo *AppInfo) (*Client, error) {
 	c.Instance.StatusPageUrl = "http://" + c.Instance.HostName + ":" + strconv.Itoa(c.Instance.Port.Value) + "/info"
 	c.Instance.HealthCheckUrl = "http://" + c.Instance.HostName + ":" + strconv.Itoa(c.Instance.Port.Value) + "/health"
 
-	c.Instance.VipAddress = c.Instance.HostName
-	c.Instance.SecureVipAddress = GetLocalIP() //获取本地IP
 	return c, nil
 }
 
@@ -304,7 +297,6 @@ func (c *Client) starHeartbeats() {
 		for {
 			select {
 			case <-time.After(time.Second * 5):
-				log.Debug().Msg("五秒发送心跳一次")
 				c.heartbeatCh <- struct{}{}
 				log.Debug().Msg("五秒发送心跳一次 [完成]")
 			case <-c.stopChan:
@@ -792,20 +784,17 @@ func (err MaxRetriesExceeded) Error() string {
 	return fmt.Sprintf("'%s'操作没有成功,将重试%d次", err.Description, err.MaxRetries)
 }
 
-func GetLocalIP() string {
+func GetLocalIPS() (ips []string) {
 	address, err := net.InterfaceAddrs()
 	if err != nil {
-		return ""
+		return
 	}
 	for _, address := range address {
-		// check the address type and if it is not a loopback the display it
-		if inet, ok := address.(*net.IPNet); ok && !inet.IP.IsLoopback() {
-			if inet.IP.To4() != nil {
-				return inet.IP.String()
-			}
+		if inet, ok := address.(*net.IPNet); ok && !inet.IP.IsLoopback() && inet.IP.To4() != nil {
+			ips = append(ips, inet.IP.To4().String())
 		}
 	}
-	return "127.0.0.1"
+	return
 }
 
 func NowStr() string {
