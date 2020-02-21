@@ -196,10 +196,6 @@ func New(appInfo *AppInfo) (*Client, error) {
 		originTransport: http.DefaultTransport,
 	}
 	hostname, _ := os.Hostname() // nolint
-	//查找当前hostname
-	if c.AppInfo.HostName == "" && hostname == "" {
-		c.AppInfo.HostName = hostname
-	}
 	if c.AppInfo.InstanceID == "" {
 		c.AppInfo.InstanceID = hostname + ":" + c.AppInfo.AppID + ":" + strconv.Itoa(c.AppInfo.Port)
 	}
@@ -212,6 +208,9 @@ func New(appInfo *AppInfo) (*Client, error) {
 	ips := GetLocalIPS()
 	if len(ips) > 0 {
 		c.Instance.IpAddr = ips[0]
+		c.AppInfo.HostName = ips[0]
+	} else {
+		c.AppInfo.HostName = hostname
 	}
 	c.Instance.VipAddress = c.AppInfo.AppID
 	c.Instance.SecureVipAddress = c.AppInfo.AppID
