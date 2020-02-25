@@ -201,6 +201,10 @@ func New(appInfo *AppInfo) (*Client, error) {
 	}
 	if c.AppInfo.HostName == "" {
 		c.AppInfo.HostName = GetHostnameByIP(c.Instance.IpAddr)
+		if c.AppInfo.HostName == "" {
+			hostname, _ := os.Hostname()
+			c.AppInfo.HostName = hostname
+		}
 	}
 	if c.AppInfo.InstanceID == "" {
 		c.AppInfo.InstanceID = c.AppInfo.HostName + ":" + c.AppInfo.AppID + ":" + strconv.Itoa(c.AppInfo.Port)
