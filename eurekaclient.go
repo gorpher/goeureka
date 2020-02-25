@@ -202,9 +202,8 @@ func New(appInfo *AppInfo) (*Client, error) {
 	if c.AppInfo.HostName == "" {
 		c.AppInfo.HostName = GetHostnameByIP(c.Instance.IpAddr)
 	}
-	hostname, _ := os.Hostname() // nolint
 	if c.AppInfo.InstanceID == "" {
-		c.AppInfo.InstanceID = hostname + ":" + c.AppInfo.AppID + ":" + strconv.Itoa(c.AppInfo.Port)
+		c.AppInfo.InstanceID = c.AppInfo.HostName + ":" + c.AppInfo.AppID + ":" + strconv.Itoa(c.AppInfo.Port)
 	}
 	if c.AppInfo.EurekaURL == "" {
 		c.AppInfo.EurekaURL = defaultUrl
