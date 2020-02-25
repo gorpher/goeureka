@@ -198,6 +198,7 @@ func New(appInfo *AppInfo) (*Client, error) {
 	if c.AppInfo.IPAddress == "" {
 		ip := GetLocalIP()
 		c.Instance.IpAddr = ip
+
 	}
 	if c.AppInfo.HostName == "" {
 		c.AppInfo.HostName = GetHostnameByIP(c.Instance.IpAddr)
@@ -806,6 +807,18 @@ func GetLocalIP() (ip string) {
 								ip = ipnet.IP.String()
 							}
 						}
+					}
+				}
+			}
+		}
+	}
+	if ip == "" {
+		address, err := net.InterfaceAddrs()
+		if err == nil {
+			for j := range address {
+				if ipnet, ok := address[j].(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+					if ipnet.IP.To4() != nil {
+						return ipnet.IP.String()
 					}
 				}
 			}
