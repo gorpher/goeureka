@@ -195,6 +195,13 @@ func New(appInfo *AppInfo) (*Client, error) {
 		serviceCache:    NewServiceCache(time.Second * 5), //新建缓存器
 		originTransport: http.DefaultTransport,
 	}
+	if c.AppInfo.IPAddress == "" {
+		ip := GetLocalIP()
+		c.Instance.IpAddr = ip
+	}
+	if c.AppInfo.HostName == "" {
+		c.AppInfo.HostName = GetHostnameByIP(c.Instance.IpAddr)
+	}
 	hostname, _ := os.Hostname() // nolint
 	if c.AppInfo.InstanceID == "" {
 		c.AppInfo.InstanceID = hostname + ":" + c.AppInfo.AppID + ":" + strconv.Itoa(c.AppInfo.Port)
@@ -205,13 +212,7 @@ func New(appInfo *AppInfo) (*Client, error) {
 	c.Instance.InstanceID = c.AppInfo.InstanceID
 	c.Instance.App = c.AppInfo.AppID
 	c.Instance.HostName = c.AppInfo.HostName
-	ips := GetLocalIPS()
-	if len(ips) > 0 {
-		c.Instance.IpAddr = ips[0]
-		c.AppInfo.HostName = ips[0]
-	} else {
-		c.AppInfo.HostName = hostname
-	}
+
 	c.Instance.VipAddress = c.AppInfo.AppID
 	c.Instance.SecureVipAddress = c.AppInfo.AppID
 	c.Instance.Status = UP
@@ -219,9 +220,9 @@ func New(appInfo *AppInfo) (*Client, error) {
 	c.Instance.Port.Value = c.AppInfo.Port
 	c.Instance.SecurePort.Value = 443
 
-	c.Instance.HomePageUrl = "http://" + c.Instance.HostName + ":" + strconv.Itoa(c.Instance.Port.Value) + "/"
-	c.Instance.StatusPageUrl = "http://" + c.Instance.HostName + ":" + strconv.Itoa(c.Instance.Port.Value) + "/info"
-	c.Instance.HealthCheckUrl = "http://" + c.Instance.HostName + ":" + strconv.Itoa(c.Instance.Port.Value) + "/health"
+	c.Instance.HomePageUrl = "http://" + c.Instance.IpAddr + ":" + strconv.Itoa(c.Instance.Port.Value) + "/"
+	c.Instance.StatusPageUrl = "http://" + c.Instance.IpAddr + ":" + strconv.Itoa(c.Instance.Port.Value) + "/info"
+	c.Instance.HealthCheckUrl = "http://" + c.Instance.IpAddr + ":" + strconv.Itoa(c.Instance.Port.Value) + "/health"
 
 	return c, nil
 }
@@ -783,19 +784,44 @@ func (err MaxRetriesExceeded) Error() string {
 	return fmt.Sprintf("'%s'操作没有成功,将重试%d次", err.Description, err.MaxRetries)
 }
 
-func GetLocalIPS() (ips []string) {
-	address, err := net.InterfaceAddrs()
+// 获取主机index最小的IP
+func GetLocalIP() (ip string) {
+	ints, err := net.Interfaces()
 	if err != nil {
-		return
+		return "127.0.0.1"
 	}
-	for _, address := range address {
-		if inet, ok := address.(*net.IPNet); ok && !inet.IP.IsLoopback() && inet.IP.To4() != nil {
-			ips = append(ips, inet.IP.To4().String())
+	lowest := math.MaxInt64
+	for i := range ints {
+		if (ints[i].Flags & net.FlagUp) != 0 {
+			if ints[i].Index < lowest {
+				lowest = ints[i].Index
+				address, err := ints[i].Addrs()
+				if err == nil {
+					for j := range address {
+						if ipnet, ok := address[j].(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+							if ipnet.IP.To4() != nil {
+								ip = ipnet.IP.String()
+							}
+						}
+					}
+				}
+			}
 		}
 	}
 	return
 }
 
+// 根据ip得到主机名
+func GetHostnameByIP(ip string) (hostname string) {
+	addr, err := net.LookupAddr(ip)
+	if err != nil {
+		return
+	}
+	for i := range addr {
+		return strings.TrimRight(addr[i], ".")
+	}
+	return
+}
 func NowStr() string {
 	return time.Now().Format("2006-01-02T15:04:05.000")
 }

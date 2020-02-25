@@ -84,7 +84,8 @@ type Applications struct {
 }
 
 type AppInfo struct {
-	HostName   string // 服务机器的IP地址
+	HostName   string // 服务机器的主机名
+	IPAddress  string // 服务机器的IP地址
 	AppID      string // 服务名
 	InstanceID string // 服务的实例名
 	Port       int    // 服务的端口
